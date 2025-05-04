@@ -6,8 +6,9 @@ from datetime import datetime
 import torch
 import numpy as np
 
-import gym
-import roboschool
+# import gym
+# import roboschool
+from environment import STAR
 
 from PPO import PPO
 
@@ -17,7 +18,7 @@ def train():
     print("============================================================================================")
 
     ####### initialize environment hyperparameters ######
-    env_name = "RoboschoolWalker2d-v1"
+    env_name = "STAR-RIS"
 
     has_continuous_action_space = True  # continuous action space; else discrete
 
@@ -51,14 +52,16 @@ def train():
 
     print("training environment name : " + env_name)
 
-    env = gym.make(env_name)
+    # env = gym.make(env_name)
+
+    env = STAR(4,4,4,4)
 
     # state space dimension
-    state_dim = env.observation_space.shape[0]
+    state_dim = env.state_dim
 
     # action space dimension
     if has_continuous_action_space:
-        action_dim = env.action_space.shape[0]
+        action_dim = env.action_dim
     else:
         action_dim = env.action_space.n
 

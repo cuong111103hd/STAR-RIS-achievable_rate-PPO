@@ -19,8 +19,8 @@ class STAR(object):
         self.awgn_var = awgn_var
         self.channel_noise_var = channel_noise_var
 
-        self.action_dim = 2 * self.M * self.K
-        self.state_dim = 0
+        self.action_dim = 2 * self.M * self.K + 2 * self.N ** 2
+        self.state_dim = self.action_dim + 2 * (self.M * self.K + self.M * self.N + self.N * self.K + 2 * self.M * self.D + self.D ** 2 + 2 * self.N * self.D + 2 * self.D * self.K)
 
         self.bs_users = None
         self.bs_star = None
@@ -32,7 +32,7 @@ class STAR(object):
         self.d2d_users = None
 
         self.G = np.random.randn(self.M, self.K) + np.random.randn(self.M, self.K) *1j
-        trace_GGH = np.trace(self.G @ (self.G.conj().T))
+        trace_GGH = np.trace(self.G @ self.G.conj().T)
         scaling_factor = np.sqrt(self.K/trace_GGH)
         self.G = scaling_factor * self.G
 
@@ -45,8 +45,12 @@ class STAR(object):
 
     def _compute_tile(self, matrix):
         return matrix.T @ self.Phi @ self.bs_star @ self.G
+
     def compute_energy(self, matrix):
         return np.sum(np.abs(matrix)**2)
+
+    def stack_matrix(self, matrix):
+        return np.hstack((np.real(matrix).ravel(),np.imag(matrix).ravel()))
 
     def reset(self):
         self.episode_t = 0
@@ -75,7 +79,8 @@ class STAR(object):
         # print(self.d2d_d2d)
         # print(self.star_d2d)
         # print(self.d2d_users)
-
+        self.state = np.hstack((init_action, self.stack_matrix(self.bs_users), self.stack_matrix(self.bs_star),self.stack_matrix(self.star_users),
+                                self.stack_matrix(self.bs_d2d), self.stack_matrix(self.d2d_d2d), self.stack_matrix(self.star_d2d), self.stack_matrix(self.d2d_users)))
 
         return self.state
 
@@ -153,28 +158,31 @@ class STAR(object):
         self.episode_t += 1
 
         action = action.reshape(self.action_dim)
-        G_real = action[:, :self.M ** 2]
-        G_imag = action[:, self.M ** 2:2 * self.M ** 2]
+        G_real = action[:self.M ** 2]
+        G_imag = action[self.M ** 2:2 * self.M ** 2]
 
-        Phi_real = action[:, -2 * self.L:-self.L]
-        Phi_imag = action[:, -self.L:]
+        Phi_real = action[-2 * self.N:-self.N]
+        Phi_imag = action[-self.N:]
 
         self.G = G_real.reshape(self.M, self.K) + 1j * G_imag.reshape(self.M, self.K)
-        self.Phi = np.eye(self.L, dtype=complex) * (Phi_real + 1j * Phi_imag)
+        self.Phi = np.eye(self.N, dtype=complex) * (Phi_real + 1j * Phi_imag)
 
-        h_t_tilde = self._compute_tilde(self.h_t)
-        h_r_tilde = self._compute_tilde(self.h_r)
+        # h_t_tilde = self._compute_tilde(self.h_t)
+        # h_r_tilde = self._compute_tilde(self.h_r)
+        #
+        # power_r = np.linalg.norm(h_t_tilde, axis=0).reshape(1, -1) ** 2 + np.linalg.norm(h_r_tilde, axis=0).reshape(1,
+        #                                                                                                             -1) ** 2
+        #
+        # H_1_real, H_1_imag = np.real(self.H_1).reshape(1, -1), np.imag(self.H_1).reshape(1, -1)
+        # h_t_real, h_t_img = np.real(self.h_t).reshape(1, -1), np.imag(self.h_t).reshape(1, -1)
+        # h_r_real, h_r_img = np.real(self.h_r).reshape(1, -1), np.imag(self.h_r).reshape(1, -1)
 
-        power_r = np.linalg.norm(h_t_tilde, axis=0).reshape(1, -1) ** 2 + np.linalg.norm(h_r_tilde, axis=0).reshape(1,
-                                                                                                                    -1) ** 2
+        reward, opt_reward, min_R_d2d = self.compute_reward(self.Phi)
 
-        H_1_real, H_1_imag = np.real(self.H_1).reshape(1, -1), np.imag(self.H_1).reshape(1, -1)
-        h_t_real, h_t_img = np.real(self.h_t).reshape(1, -1), np.imag(self.h_t).reshape(1, -1)
-        h_r_real, h_r_img = np.real(self.h_r).reshape(1, -1), np.imag(self.h_r).reshape(1, -1)
+        self.state = np.hstack((action, self.stack_matrix(self.bs_users), self.stack_matrix(self.bs_star), self.stack_matrix(self.star_users),
+                                self.stack_matrix(self.bs_d2d),self.stack_matrix(self.d2d_d2d),self.stack_matrix(self.star_d2d),self.stack_matrix(self.d2d_users)))
 
-        self.state = np.hstack((action, H_1_real, H_1_imag, h_t_real, h_t_img, h_r_real, h_r_img))
 
-        reward, opt_reward = self._compute_reward(self.Phi)
 
         done = opt_reward == reward
 
@@ -183,7 +191,8 @@ class STAR(object):
     def close(self):
         pass
 
-if __name__ == '__main__':
-    object = STAR(num_antennas=2, num_star_elements=2, num_users=2, num_d2d_pairs=2)
-    object.reset()
-    print(object.compute_reward(np.eye(2)))
+# if __name__ == '__main__':
+#     object = STAR(4,4,4,4)
+#     object.reset()
+#     print(object.state_dim)
+#     print(object.state.shape)
