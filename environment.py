@@ -120,7 +120,6 @@ class STAR(object):
             interferences_d2d = self.compute_energy(d2d_user_k) + self.compute_energy(
                 star_user_k.T @ Phi_k @ self.star_d2d[:, :self.D])
             x = x.item()
-            print(x)
             y = interferences_users + interferences_d2d
 
             rho_k = x / y
@@ -140,7 +139,6 @@ class STAR(object):
 
             x = self.compute_energy(self.d2d_d2d[j,j]) + self.compute_energy(self.star_d2d[:,self.D + j] @ self.Phi @ self.star_d2d[:,j].T)
             x = x.item()
-            print(x)
 
             interferences_users = self.compute_energy(self.bs_d2d[:,j] @ self.G) + self.compute_energy(
                 self.star_d2d[:,self.D + j].T @ Phi_j @ self.bs_star @ self.G)

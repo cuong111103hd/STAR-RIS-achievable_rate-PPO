@@ -185,6 +185,7 @@ def train():
 
             time_step += 1
             current_ep_reward += reward
+            
 
             # update PPO agent
             if time_step % update_timestep == 0:
