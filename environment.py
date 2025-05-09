@@ -163,7 +163,13 @@ class STAR(object):
         Phi_imag = action[-self.N:]
 
         self.G = G_real.reshape(self.M, self.K) + 1j * G_imag.reshape(self.M, self.K)
-        self.Phi = np.eye(self.N, dtype=complex) * (Phi_real + 1j * Phi_imag)
+        trace_GGH = np.trace(self.G @ self.G.conj().T)
+        self.G = self.G * np.sqrt(self.K / trace_GGH)
+
+        self.Phi = Phi_real + 1j * Phi_imag
+        for i in range(len(self.Phi)):
+            self.Phi[i] = self.Phi[i] / np.abs(self.Phi[i])
+        self.Phi = np.eye(self.N, dtype=complex) * (self.Phi)
 
         # h_t_tilde = self._compute_tilde(self.h_t)
         # h_r_tilde = self._compute_tilde(self.h_r)
@@ -192,5 +198,4 @@ class STAR(object):
 # if __name__ == '__main__':
 #     object = STAR(4,4,4,4)
 #     object.reset()
-#     print(object.state_dim)
-#     print(object.state.shape)
+#     print(object.compute_reward(np.eye(4)))
