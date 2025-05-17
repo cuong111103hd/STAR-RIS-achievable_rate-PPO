@@ -15,12 +15,17 @@ class STAR(object):
         self.K = num_users
         self.D = num_d2d_pairs
 
+        self.power = 1000
+        self.power_d2d = 10
+        self.power_d2d_matrix = np.ones(self.D) * self.power_d2d
+
         self.channel_est_error = channel_est_error
         self.awgn_var = awgn_var
         self.channel_noise_var = channel_noise_var
 
-        self.action_dim = 2 * self.M * self.K + 2 * self.N ** 2
-        self.state_dim = self.action_dim + 2 * (self.M * self.K + self.M * self.N + self.N * self.K + 2 * self.M * self.D + self.D ** 2 + 2 * self.N * self.D + 2 * self.D * self.K)
+        self.action_dim = 2 * self.M * self.K + 2 * self.N ** 2 + self.D
+        self.state_dim = self.action_dim + 2 * (self.M * self.K + self.M * self.N + self.N * self.K + 2 * self.M * self.D +
+                                                self.D ** 2 + 2 * self.N * self.D + 2 * self.D * self.K)
 
         self.bs_users = None
         self.bs_star = None
@@ -33,7 +38,7 @@ class STAR(object):
 
         self.G = np.random.randn(self.M, self.K) + np.random.randn(self.M, self.K) *1j
         trace_GGH = np.trace(self.G @ self.G.conj().T)
-        scaling_factor = np.sqrt(self.K/trace_GGH)
+        scaling_factor = np.sqrt((self.power -1 )/trace_GGH)
         self.G = scaling_factor * self.G
 
         self.Phi = np.eye(self.N, dtype=complex)
@@ -44,7 +49,7 @@ class STAR(object):
         self.episode_t = None
 
     def _compute_tile(self, matrix):
-        return matrix.T @ self.Phi @ self.bs_star @ self.G
+        return matrix.conj().T @ self.Phi @ self.bs_star @ self.G
 
     def compute_energy(self, matrix):
         return np.sum(np.abs(matrix)**2)
@@ -60,13 +65,16 @@ class STAR(object):
         self.bs_star = np.random.normal(0,np.sqrt(0.5), (self.M, self.N)) + 1j * np.random.normal(0,np.sqrt(0.5), (self.M, self.N))
         self.star_users = np.random.normal(0,np.sqrt(0.5), (self.N, self.K)) + 1j * np.random.normal(0,np.sqrt(0.5), (self.N, self.K))
 
-        # print(self.bs_users)
-        # print(self.bs_star)
-        # print(self.star_users)
+        # print("Bs_users",self.bs_users, self.bs_users.shape)
+        # print("Bs_star",self.bs_star, self.bs_star.shape)
+        # print("Star_user",self.star_users, self.star_users.shape)
+
 
         init_action_G = np.hstack((np.real(self.G.reshape(-1)),np.imag(self.G.reshape(-1))))
         init_action_Phi = np.hstack((np.real(self.Phi.reshape(-1)),np.imag(self.Phi.reshape(-1))))
-        init_action = np.hstack((init_action_G,init_action_Phi))
+        init_action_power_d2d = np.hstack(self.power_d2d_matrix)
+        init_action = np.hstack((init_action_G,init_action_Phi,init_action_power_d2d))
+
 
         #Initial d2d matrix
         self.bs_d2d = np.random.normal(0,np.sqrt(0.5), (self.M, 2 * self.D )) + 1j * np.random.normal(0,np.sqrt(0.5), (self.M, 2 * self.D))
@@ -79,12 +87,13 @@ class STAR(object):
         # print(self.d2d_d2d)
         # print(self.star_d2d)
         # print(self.d2d_users)
+        # print(np.trace(self.G @ self.G.conj().T))
         self.state = np.hstack((init_action, self.stack_matrix(self.bs_users), self.stack_matrix(self.bs_star),self.stack_matrix(self.star_users),
                                 self.stack_matrix(self.bs_d2d), self.stack_matrix(self.d2d_d2d), self.stack_matrix(self.star_d2d), self.stack_matrix(self.d2d_users)))
 
         return self.state
 
-    def compute_reward(self, Phi):
+    def compute_reward(self, Phi, power_d2d_matrix):
         diag_Phi = np.diag(Phi)
         diag_Phi1 = np.zeros((self.N,), dtype=complex)
         diag_Phi2 = np.zeros((self.N,), dtype=complex)
@@ -97,6 +106,16 @@ class STAR(object):
         reward = 0
         opt_reward = 0
         min_R_d2d = 100
+        threshold_pu = 0
+        threshold_d2d = 0
+
+        if np.trace(self.G @ self.G.conj().T)  > self.power:
+            # print("Power constraint violated")
+            reward = 0
+            opt_reward = 100
+            min_R_d2d = 0
+            return reward, opt_reward, min_R_d2d
+
 
         # d2d_users_t = self.d2d_users[:self.D,:]
         # d2d_star_t = self.star_d2d[:self.N,:]
@@ -117,40 +136,44 @@ class STAR(object):
             x = self.compute_energy(bs_user_k @ self.G[:,k]) + self.compute_energy(star_user_k.T @ Phi_k @ self.bs_star @ self.G[:,k])
             interferences_users = self.compute_energy(bs_user_k @ G_remove) + self.compute_energy(
                 star_user_k.T @ Phi_k @ self.bs_star @ G_remove)
-            interferences_d2d = self.compute_energy(d2d_user_k) + self.compute_energy(
-                star_user_k.T @ Phi_k @ self.star_d2d[:, :self.D])
+            interferences_d2d = self.compute_energy(d2d_user_k @ power_d2d_matrix.T) *  + self.compute_energy(
+                star_user_k.T @ Phi_k @ self.star_d2d[:, :self.D] @ power_d2d_matrix.T )
             x = x.item()
             y = interferences_users + interferences_d2d
 
             rho_k = x / y
-            #print(np.log(1 + rho_k)/ np.log(2))
-
-            reward += np.log(1 + rho_k)/ np.log(2)
+            achievable_rate = np.log(1 + rho_k)/ np.log(2)
+            # if achievable_rate < threshold_pu:
+            #     achievable_rate = 0
+            reward +=  achievable_rate
             opt_reward += np.log(1 + self.K/2)/ np.log(2)
 
-        for j in range(self.D):
-            d2d_remove = np.delete(self.d2d_d2d,j,0)
-            d2d_star_remove  = np.delete(self.star_d2d[:, : self.D],j,1)
-
-            if j < self.D // 2:
-                Phi_j = Phi1
-            else:
-                Phi_j = Phi2
-
-            x = self.compute_energy(self.d2d_d2d[j,j]) + self.compute_energy(self.star_d2d[:,self.D + j] @ self.Phi @ self.star_d2d[:,j].T)
-            x = x.item()
-
-            interferences_users = self.compute_energy(self.bs_d2d[:,j] @ self.G) + self.compute_energy(
-                self.star_d2d[:,self.D + j].T @ Phi_j @ self.bs_star @ self.G)
-            interferences_d2d = self.compute_energy(d2d_remove[:,j]) + self.compute_energy(
-                self.star_d2d[:,self.D + j].T @ Phi_j @ d2d_star_remove)
-
-            rho_j = x / interferences_users + interferences_d2d
-            achievable_rate = np.log(1 + rho_j)/ np.log(2)
-            if min_R_d2d > achievable_rate: min_R_d2d = achievable_rate
+        # for j in range(self.D):
+        #     d2d_remove = np.delete(self.d2d_d2d,j,0)
+        #     d2d_star_remove  = np.delete(self.star_d2d[:, : self.D],j,1)
+        #
+        #     if j < self.D // 2:
+        #         Phi_j = Phi1
+        #     else:
+        #         Phi_j = Phi2
+        #
+        #     x = self.compute_energy(self.d2d_d2d[j,j]) + self.compute_energy(self.star_d2d[:,self.D + j] @ self.Phi @ self.star_d2d[:,j].T)
+        #     x = x.item()
+        #
+        #     interferences_users = self.compute_energy(self.bs_d2d[:,j] @ self.G) + self.compute_energy(
+        #         self.star_d2d[:,self.D + j].T @ Phi_j @ self.bs_star @ self.G)
+        #     interferences_d2d = self.compute_energy(d2d_remove[:,j]) + self.compute_energy(
+        #         self.star_d2d[:,self.D + j].T @ Phi_j @ d2d_star_remove)
+        #
+        #     rho_j = x / interferences_users + interferences_d2d
+        #     achievable_rate = np.log(1 + rho_j)/ np.log(2)
+        #     if achievable_rate < threshold:
+        #         reward = 0
 
 
         return reward, opt_reward, min_R_d2d
+
+
 
     def step(self, action):
         self.episode_t += 1
@@ -159,29 +182,24 @@ class STAR(object):
         G_real = action[:self.M ** 2]
         G_imag = action[self.M ** 2:2 * self.M ** 2]
 
-        Phi_real = action[-2 * self.N:-self.N]
-        Phi_imag = action[-self.N:]
+        Phi_real = action[-2 * self.N - self.D :-self.N - self.D]
+        Phi_imag = action[-self.N - self.D: - self.D]
+
+        power_d2d_matrix = action[-self.D:]
 
         self.G = G_real.reshape(self.M, self.K) + 1j * G_imag.reshape(self.M, self.K)
-        trace_GGH = np.trace(self.G @ self.G.conj().T)
-        self.G = self.G * np.sqrt(self.K / trace_GGH)
+        self.G = self.G * np.sqrt(self.power/16)
+        print(self.compute_energy(self.G))
+        # trace_GGH = np.trace(self.G @ self.G.conj().T)
+        # self.G = self.G * np.sqrt(self.K / trace_GGH)
 
         self.Phi = Phi_real + 1j * Phi_imag
         for i in range(len(self.Phi)):
             self.Phi[i] = self.Phi[i] / np.abs(self.Phi[i])
+
         self.Phi = np.eye(self.N, dtype=complex) * (self.Phi)
 
-        # h_t_tilde = self._compute_tilde(self.h_t)
-        # h_r_tilde = self._compute_tilde(self.h_r)
-        #
-        # power_r = np.linalg.norm(h_t_tilde, axis=0).reshape(1, -1) ** 2 + np.linalg.norm(h_r_tilde, axis=0).reshape(1,
-        #                                                                                                             -1) ** 2
-        #
-        # H_1_real, H_1_imag = np.real(self.H_1).reshape(1, -1), np.imag(self.H_1).reshape(1, -1)
-        # h_t_real, h_t_img = np.real(self.h_t).reshape(1, -1), np.imag(self.h_t).reshape(1, -1)
-        # h_r_real, h_r_img = np.real(self.h_r).reshape(1, -1), np.imag(self.h_r).reshape(1, -1)
-
-        reward, opt_reward, min_R_d2d = self.compute_reward(self.Phi)
+        reward, opt_reward, min_R_d2d = self.compute_reward(self.Phi, power_d2d_matrix)
 
         self.state = np.hstack((action, self.stack_matrix(self.bs_users), self.stack_matrix(self.bs_star), self.stack_matrix(self.star_users),
                                 self.stack_matrix(self.bs_d2d),self.stack_matrix(self.d2d_d2d),self.stack_matrix(self.star_d2d),self.stack_matrix(self.d2d_users)))
@@ -190,12 +208,15 @@ class STAR(object):
 
         done = opt_reward == reward
 
-        return self.state, reward, done, None
+        # return self.state, reward, done, None
+        return self.state, reward, done, min_R_d2d
+
 
     def close(self):
         pass
 
-# if __name__ == '__main__':
-#     object = STAR(4,4,4,4)
-#     object.reset()
-#     print(object.compute_reward(np.eye(4)))
+if __name__ == '__main__':
+    object = STAR(4,4,4,4)
+    object.reset()
+    print(np.trace(object.G @ object.G.conj().T))
+    print(object.compute_reward(object.Phi, object.power_d2d_matrix))
