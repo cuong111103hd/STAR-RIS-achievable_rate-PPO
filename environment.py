@@ -17,7 +17,7 @@ class STAR(object):
 
         self.power = 1000
         self.power_d2d = 10
-        self.power_d2d_matrix = np.ones(self.D) * self.power_d2d
+        self.power_d2d_matrix = np.ones(self.D) * np.sqrt(self.power_d2d)
 
         self.channel_est_error = channel_est_error
         self.awgn_var = awgn_var
@@ -132,12 +132,17 @@ class STAR(object):
             else:
                 Phi_k = Phi2
 
+            # print("power_d2d_matrix",np.sum(self.power_d2d_matrix**2))
 
-            x = self.compute_energy(bs_user_k @ self.G[:,k]) + self.compute_energy(star_user_k.T @ Phi_k @ self.bs_star @ self.G[:,k])
-            interferences_users = self.compute_energy(bs_user_k @ G_remove) + self.compute_energy(
-                star_user_k.T @ Phi_k @ self.bs_star @ G_remove)
-            interferences_d2d = self.compute_energy(d2d_user_k @ power_d2d_matrix.T) *  + self.compute_energy(
-                star_user_k.T @ Phi_k @ self.star_d2d[:, :self.D] @ power_d2d_matrix.T )
+
+            x = self.compute_energy(bs_user_k.T @ self.G[:,k]) + self.compute_energy(star_user_k.conj().T @ Phi_k @ self.bs_star.T @ self.G[:,k])
+            # print("x",x)
+            interferences_users = self.compute_energy(bs_user_k.T @ G_remove) + self.compute_energy(
+                star_user_k.conj().T @ Phi_k @ self.bs_star.T @ G_remove)
+            # print("interferences_users",interferences_users)
+            interferences_d2d = self.compute_energy(d2d_user_k @ power_d2d_matrix.T)  + self.compute_energy(
+                star_user_k.conj().T @ Phi_k @ self.star_d2d[:, :self.D] @ power_d2d_matrix )
+            # print("interferences_d2d",interferences_d2d)
             x = x.item()
             y = interferences_users + interferences_d2d
 
@@ -188,8 +193,8 @@ class STAR(object):
         power_d2d_matrix = action[-self.D:]
 
         self.G = G_real.reshape(self.M, self.K) + 1j * G_imag.reshape(self.M, self.K)
-        self.G = self.G * np.sqrt(self.power/16)
-        print(self.compute_energy(self.G))
+        self.G = self.G * np.sqrt(self.power/ (2 * self.K * self.M))
+        # print(self.compute_energy(self.G))
         # trace_GGH = np.trace(self.G @ self.G.conj().T)
         # self.G = self.G * np.sqrt(self.K / trace_GGH)
 
@@ -215,8 +220,8 @@ class STAR(object):
     def close(self):
         pass
 
-if __name__ == '__main__':
-    object = STAR(4,4,4,4)
-    object.reset()
-    print(np.trace(object.G @ object.G.conj().T))
-    print(object.compute_reward(object.Phi, object.power_d2d_matrix))
+# if __name__ == '__main__':
+#     object = STAR(4,4,4,4)
+#     object.reset()
+#     print(np.trace(object.G @ object.G.conj().T))
+#     print(object.compute_reward(object.Phi, object.power_d2d_matrix))
