@@ -109,12 +109,12 @@ class STAR(object):
         threshold_pu = 0
         threshold_d2d = 0
 
-        if np.trace(self.G @ self.G.conj().T)  > self.power:
-            # print("Power constraint violated")
-            reward = 0
-            opt_reward = 100
-            min_R_d2d = 0
-            return reward, opt_reward, min_R_d2d
+        # if np.trace(self.G @ self.G.conj().T)  > self.power:
+        #     # print("Power constraint violated")
+        #     reward = 0
+        #     opt_reward = 100
+        #     min_R_d2d = 0
+        #     return reward, opt_reward, min_R_d2d
 
 
         # d2d_users_t = self.d2d_users[:self.D,:]
