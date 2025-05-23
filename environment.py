@@ -135,13 +135,11 @@ class STAR(object):
             # print("power_d2d_matrix",np.sum(self.power_d2d_matrix**2))
 
 
-            x = self.compute_energy(bs_user_k.T @ self.G[:,k]) + self.compute_energy(star_user_k.conj().T @ Phi_k @ self.bs_star.T @ self.G[:,k])
+            x = self.compute_energy((bs_user_k.T + star_user_k.conj().T @ Phi_k @ self.bs_star.T) @ self.G[:,k])
             # print("x",x)
-            interferences_users = self.compute_energy(bs_user_k.T @ G_remove) + self.compute_energy(
-                star_user_k.conj().T @ Phi_k @ self.bs_star.T @ G_remove)
+            interferences_users = self.compute_energy((bs_user_k.T + star_user_k.conj().T @ Phi_k @ self.bs_star.T) @ G_remove)
             # print("interferences_users",interferences_users)
-            interferences_d2d = self.compute_energy(d2d_user_k @ power_d2d_matrix.T)  + self.compute_energy(
-                star_user_k.conj().T @ Phi_k @ self.star_d2d[:, :self.D] @ power_d2d_matrix )
+            interferences_d2d = self.compute_energy((d2d_user_k.T + star_user_k.conj().T @ Phi_k @ self.star_d2d[:, :self.D]) @ power_d2d_matrix )
             # print("interferences_d2d",interferences_d2d)
             x = x.item()
             y = interferences_users + interferences_d2d
