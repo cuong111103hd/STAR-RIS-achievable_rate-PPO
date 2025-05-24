@@ -106,8 +106,8 @@ class STAR(object):
         reward = 0
         opt_reward = 0
         min_R_d2d = 100
-        threshold_pu = 0
-        threshold_d2d = 0
+        threshold_pu = 1.5/4
+        threshold_d2d = 0.45
 
         # if np.trace(self.G @ self.G.conj().T)  > self.power:
         #     # print("Power constraint violated")
@@ -146,35 +146,37 @@ class STAR(object):
 
             rho_k = x / y
             achievable_rate = np.log(1 + rho_k)/ np.log(2)
-            # if achievable_rate < threshold_pu:
-            #     achievable_rate = 0
             reward +=  achievable_rate
             opt_reward += np.log(1 + self.K/2)/ np.log(2)
+            if achievable_rate < threshold_pu:
+                return 0, opt_reward
 
-        # for j in range(self.D):
-        #     d2d_remove = np.delete(self.d2d_d2d,j,0)
-        #     d2d_star_remove  = np.delete(self.star_d2d[:, : self.D],j,1)
-        #
-        #     if j < self.D // 2:
-        #         Phi_j = Phi1
-        #     else:
-        #         Phi_j = Phi2
-        #
-        #     x = self.compute_energy(self.d2d_d2d[j,j]) + self.compute_energy(self.star_d2d[:,self.D + j] @ self.Phi @ self.star_d2d[:,j].T)
-        #     x = x.item()
-        #
-        #     interferences_users = self.compute_energy(self.bs_d2d[:,j] @ self.G) + self.compute_energy(
-        #         self.star_d2d[:,self.D + j].T @ Phi_j @ self.bs_star @ self.G)
-        #     interferences_d2d = self.compute_energy(d2d_remove[:,j]) + self.compute_energy(
-        #         self.star_d2d[:,self.D + j].T @ Phi_j @ d2d_star_remove)
-        #
-        #     rho_j = x / interferences_users + interferences_d2d
-        #     achievable_rate = np.log(1 + rho_j)/ np.log(2)
-        #     if achievable_rate < threshold:
-        #         reward = 0
+        for j in range(self.D):
+            d2d_remove = np.delete(self.d2d_d2d,j,0)
+            d2d_star_remove  = np.delete(self.star_d2d[:, : self.D],j,1)
+            power_d2d_matrix_remove = np.delete(power_d2d_matrix,j,0)
+
+            if j < self.D // 2:
+                Phi_j = Phi1
+            else:
+                Phi_j = Phi2
+
+            x = self.compute_energy((self.d2d_d2d[j,j] + self.star_d2d[:,self.D + j] @ self.Phi @ self.star_d2d[:,j].T) * power_d2d_matrix[j])
+            x = x.item()
+
+            interferences_users = self.compute_energy((self.bs_d2d[:,j + self.D].T + self.star_d2d[:,self.D + j].conj().T @ Phi_j @ self.bs_star.T) @ self.G)
+            interferences_d2d = self.compute_energy((d2d_remove[:,j].T + self.star_d2d[:,self.D + j].conj().T @ Phi_j @ d2d_star_remove) @ power_d2d_matrix_remove)
+
+            rho_j = x / interferences_users + interferences_d2d
+            if rho_j < min_R_d2d:
+                min_R_d2d = rho_j
+
+            achievable_rate = np.log(1 + rho_j)/ np.log(2)
+            if achievable_rate < threshold_d2d:
+                return 0, opt_reward
 
 
-        return reward, opt_reward, min_R_d2d
+        return reward, opt_reward
 
 
 
@@ -202,7 +204,8 @@ class STAR(object):
 
         self.Phi = np.eye(self.N, dtype=complex) * (self.Phi)
 
-        reward, opt_reward, min_R_d2d = self.compute_reward(self.Phi, power_d2d_matrix)
+        #reward, opt_reward, min_R_d2d = self.compute_reward(self.Phi, power_d2d_matrix)
+        reward, opt_reward = self.compute_reward(self.Phi, power_d2d_matrix)
 
         self.state = np.hstack((action, self.stack_matrix(self.bs_users), self.stack_matrix(self.bs_star), self.stack_matrix(self.star_users),
                                 self.stack_matrix(self.bs_d2d),self.stack_matrix(self.d2d_d2d),self.stack_matrix(self.star_d2d),self.stack_matrix(self.d2d_users)))
@@ -211,15 +214,15 @@ class STAR(object):
 
         done = opt_reward == reward
 
-        # return self.state, reward, done, None
-        return self.state, reward, done, min_R_d2d
+        return self.state, reward, done, None
+        # return self.state, reward, done, min_R_d2d
 
 
     def close(self):
         pass
 
-# if __name__ == '__main__':
-#     object = STAR(4,4,4,4)
-#     object.reset()
-#     print(np.trace(object.G @ object.G.conj().T))
-#     print(object.compute_reward(object.Phi, object.power_d2d_matrix))
+if __name__ == '__main__':
+    object = STAR(4,4,4,4)
+    object.reset()
+    print(np.trace(object.G @ object.G.conj().T))
+    print(object.compute_reward(object.Phi, object.power_d2d_matrix))
