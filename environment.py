@@ -106,7 +106,7 @@ class STAR(object):
         reward = 0
         opt_reward = 0
         min_R_d2d = 100
-        threshold_pu = 1.0/self.K
+        threshold_pu = 0.5/self.K
         threshold_d2d = 0.40
 
         # if np.trace(self.G @ self.G.conj().T)  > self.power:
@@ -172,8 +172,9 @@ class STAR(object):
                 min_R_d2d = rho_j
 
             achievable_rate = np.log(1 + rho_j)/ np.log(2)
-            if achievable_rate < threshold_d2d:
-                return 0, opt_reward
+            # if achievable_rate < threshold_d2d:
+            #     print("2")
+            #     return 0, opt_reward
 
 
         return reward, opt_reward
@@ -224,5 +225,4 @@ class STAR(object):
 if __name__ == '__main__':
     object = STAR(4,4,4,4)
     object.reset()
-    print(np.trace(object.G @ object.G.conj().T))
     print(object.compute_reward(object.Phi, object.power_d2d_matrix))
