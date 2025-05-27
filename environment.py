@@ -107,7 +107,7 @@ class STAR(object):
         opt_reward = 0
         min_R_d2d = 100
         threshold_pu = 0.5/self.K
-        threshold_d2d = 0.40
+        threshold_d2d = 0.30
 
         # if np.trace(self.G @ self.G.conj().T)  > self.power:
         #     # print("Power constraint violated")
